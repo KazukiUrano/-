@@ -1,18 +1,35 @@
 /**
  * 作成者：浦野一輝
  * 作成日：2025-11-11 02:32:19
- * 最終更新：2025-11-11 02:41:17
+ * 最終更新：2025-11-11 02:42:44
  * 説明：勤怠管理アプリ - Google Apps Script（スプレッドシートとの連携処理）
  * 
  * 【修正履歴（詳細版）】
  * - 2025-11-11 02:32:19 [浦野一輝]：配布用スプレッドシートIDに更新、onOpen関数と初期設定機能を追加
+ * - 2025-11-11 02:42:44 [浦野一輝]：スクリプトプロパティを使用してスプレッドシートIDを自動取得・設定するように変更
  * 
  * 【push時の変更履歴（大きな変更のみ）】
  * - 2025-11-11 [浦野一輝]：フェーズ0実装（配布用スプレッドシートセットアップ）
  */
 
-// スプレッドシートの設定（配布用）
-const SPREADSHEET_ID = '1k7-ye74rdU3ZRvxQRChjdofcNwSBPdJa76jhtRvicac';
+/**
+ * スプレッドシートIDを取得（スクリプトプロパティから取得、なければ現在のスプレッドシートのIDを使用）
+ */
+function getSpreadsheetId() {
+  const properties = PropertiesService.getScriptProperties();
+  let spreadsheetId = properties.getProperty('SPREADSHEET_ID');
+  
+  // スクリプトプロパティに保存されていない場合は、現在のスプレッドシートのIDを取得して保存
+  if (!spreadsheetId) {
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    if (spreadsheet) {
+      spreadsheetId = spreadsheet.getId();
+      properties.setProperty('SPREADSHEET_ID', spreadsheetId);
+    }
+  }
+  
+  return spreadsheetId;
+}
 
 /**
  * 現在の年月からシート名を生成
@@ -372,7 +389,8 @@ function getTodayAllRecords() {
  * スプレッドシートを取得（年月ごとにシートを分ける）
  */
 function getSheet() {
-  const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const spreadsheetId = getSpreadsheetId();
+  const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
   const sheetName = getCurrentSheetName();
   let sheet = spreadsheet.getSheetByName(sheetName);
   
@@ -922,7 +940,8 @@ function doGet(e) {
  */
 function testConnection() {
   try {
-    console.log('スプレッドシートID:', SPREADSHEET_ID);
+    const spreadsheetId = getSpreadsheetId();
+    console.log('スプレッドシートID:', spreadsheetId);
     const sheet = getSheet();
     console.log('シート名:', sheet.getName());
     console.log('最終行:', sheet.getLastRow());
@@ -965,7 +984,13 @@ function onOpen() {
  */
 function setupInitialConfiguration() {
   try {
-    const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+    // 現在のスプレッドシートのIDを取得してスクリプトプロパティに保存
+    const currentSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const currentSpreadsheetId = currentSpreadsheet.getId();
+    const properties = PropertiesService.getScriptProperties();
+    properties.setProperty('SPREADSHEET_ID', currentSpreadsheetId);
+    
+    const spreadsheet = SpreadsheetApp.openById(currentSpreadsheetId);
     const ui = SpreadsheetApp.getUi();
     
     // 設定シートを作成または取得
@@ -997,7 +1022,7 @@ function setupInitialConfiguration() {
     spreadsheet.moveActiveSheet(1);
     
     ui.alert('初期設定が完了しました！', 
-             '「設定方法」シートと「使用方法」シートを作成しました。\nそれぞれのシートを確認してください。', 
+             'このスプレッドシートのIDを自動的に設定しました。\n（ID: ' + currentSpreadsheetId + '）\n\n「設定方法」シートと「使用方法」シートを作成しました。\nそれぞれのシートを確認してください。', 
              ui.ButtonSet.OK);
     
     return {
@@ -1023,25 +1048,18 @@ function setupSettingSheet(sheet) {
     [''],
     ['このシートでは、勤怠管理アプリの初期設定方法を説明します。'],
     [''],
-    ['① スプレッドシートIDの設定'],
+    ['① 初期設定の実行'],
     [''],
-    ['1. このスプレッドシートのURLを確認してください'],
-    ['   URLの例: https://docs.google.com/spreadsheets/d/【ここがスプレッドシートID】/edit'],
+    ['1. 上部メニューから「⚙️ 勤怠管理」→「🔧 初期設定をする」を選択'],
     [''],
-    ['2. スプレッドシートIDをコピーします'],
-    ['   例: 1k7-ye74rdU3ZRvxQRChjdofcNwSBPdJa76jhtRvicac'],
+    ['2. 初期設定が完了すると、このスプレッドシートのIDが自動的に設定されます'],
     [''],
-    ['3. 上部メニューから「拡張機能」→「Apps Script」を選択'],
+    ['3. 「設定方法」シートと「使用方法」シートが自動的に作成されます'],
     [''],
-    ['4. 左側のファイル一覧から「Code.gs」を開く'],
-    [''],
-    ['5. ファイルの上部にある以下の行を探します:'],
-    ['   const SPREADSHEET_ID = \'ここにIDを入力\';'],
-    [''],
-    ['6. シングルクォート内に、このスプレッドシートのIDを貼り付けます'],
-    ['   例: const SPREADSHEET_ID = \'1k7-ye74rdU3ZRvxQRChjdofcNwSBPdJa76jhtRvicac\';'],
-    [''],
-    ['7. 保存ボタン（💾）をクリックして保存'],
+    ['【重要】'],
+    ['- 初期設定ボタンを押すだけで、スプレッドシートIDの設定は完了します'],
+    ['- 手動でIDを入力する必要はありません'],
+    ['- このスプレッドシートで初期設定を実行してください'],
     [''],
     ['② Webアプリとしてデプロイ'],
     [''],
@@ -1070,10 +1088,11 @@ function setupSettingSheet(sheet) {
     ['以上で初期設定は完了です！'],
     [''],
     ['【注意事項】'],
-    ['- スプレッドシートIDは必ず正しく設定してください'],
+    ['- 初期設定ボタンを押すと、自動的にこのスプレッドシートのIDが設定されます'],
     ['- WebアプリのURLは安全に保管してください'],
     ['- 月次シート（例: 2025年11月）は自動的に作成されます'],
     ['- 既存の月次シートは削除しても問題ありません'],
+    ['- スプレッドシートをコピーした場合は、新しいスプレッドシートで再度初期設定を実行してください'],
   ];
   
   // データを書き込み
