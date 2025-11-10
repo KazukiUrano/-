@@ -1,10 +1,18 @@
 /**
- * 勤怠管理アプリ - Google Apps Script
- * スプレッドシートとの連携処理
+ * 作成者：浦野一輝
+ * 作成日：2025-11-11 02:32:19
+ * 最終更新：2025-11-11 02:41:17
+ * 説明：勤怠管理アプリ - Google Apps Script（スプレッドシートとの連携処理）
+ * 
+ * 【修正履歴（詳細版）】
+ * - 2025-11-11 02:32:19 [浦野一輝]：配布用スプレッドシートIDに更新、onOpen関数と初期設定機能を追加
+ * 
+ * 【push時の変更履歴（大きな変更のみ）】
+ * - 2025-11-11 [浦野一輝]：フェーズ0実装（配布用スプレッドシートセットアップ）
  */
 
-// スプレッドシートの設定
-const SPREADSHEET_ID = '1GuQpyVpENFXVLgb1KWC2docy9MouWRhT0q-FQLPLTkg';
+// スプレッドシートの設定（配布用）
+const SPREADSHEET_ID = '1k7-ye74rdU3ZRvxQRChjdofcNwSBPdJa76jhtRvicac';
 
 /**
  * 現在の年月からシート名を生成
@@ -938,4 +946,260 @@ function testClockIn() {
     console.error('出勤記録エラー:', error.toString());
     return { success: false, message: error.toString() };
   }
+}
+
+/**
+ * スプレッドシートを開いたときにメニューを追加
+ */
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('⚙️ 勤怠管理')
+    .addItem('🔧 初期設定をする', 'setupInitialConfiguration')
+    .addSeparator()
+    .addItem('📊 スプレッドシート接続テスト', 'testConnection')
+    .addToUi();
+}
+
+/**
+ * 初期設定：設定シートと使用方法シートを作成・設定
+ */
+function setupInitialConfiguration() {
+  try {
+    const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const ui = SpreadsheetApp.getUi();
+    
+    // 設定シートを作成または取得
+    let settingSheet = spreadsheet.getSheetByName('設定方法');
+    if (!settingSheet) {
+      settingSheet = spreadsheet.insertSheet('設定方法');
+    } else {
+      settingSheet.clear();
+    }
+    
+    // 使用方法シートを作成または取得
+    let usageSheet = spreadsheet.getSheetByName('使用方法');
+    if (!usageSheet) {
+      usageSheet = spreadsheet.insertSheet('使用方法');
+    } else {
+      usageSheet.clear();
+    }
+    
+    // 設定シートの内容を設定
+    setupSettingSheet(settingSheet);
+    
+    // 使用方法シートの内容を設定
+    setupUsageSheet(usageSheet);
+    
+    // シートを先頭に移動
+    spreadsheet.setActiveSheet(settingSheet);
+    spreadsheet.moveActiveSheet(0);
+    spreadsheet.setActiveSheet(usageSheet);
+    spreadsheet.moveActiveSheet(1);
+    
+    ui.alert('初期設定が完了しました！', 
+             '「設定方法」シートと「使用方法」シートを作成しました。\nそれぞれのシートを確認してください。', 
+             ui.ButtonSet.OK);
+    
+    return {
+      success: true,
+      message: '初期設定が完了しました'
+    };
+  } catch (error) {
+    const ui = SpreadsheetApp.getUi();
+    ui.alert('エラー', '初期設定中にエラーが発生しました: ' + error.toString(), ui.ButtonSet.OK);
+    return {
+      success: false,
+      message: 'エラーが発生しました: ' + error.toString()
+    };
+  }
+}
+
+/**
+ * 設定シートの内容を設定
+ */
+function setupSettingSheet(sheet) {
+  const data = [
+    ['勤怠管理アプリ - 設定方法'],
+    [''],
+    ['このシートでは、勤怠管理アプリの初期設定方法を説明します。'],
+    [''],
+    ['① スプレッドシートIDの設定'],
+    [''],
+    ['1. このスプレッドシートのURLを確認してください'],
+    ['   URLの例: https://docs.google.com/spreadsheets/d/【ここがスプレッドシートID】/edit'],
+    [''],
+    ['2. スプレッドシートIDをコピーします'],
+    ['   例: 1k7-ye74rdU3ZRvxQRChjdofcNwSBPdJa76jhtRvicac'],
+    [''],
+    ['3. 上部メニューから「拡張機能」→「Apps Script」を選択'],
+    [''],
+    ['4. 左側のファイル一覧から「Code.gs」を開く'],
+    [''],
+    ['5. ファイルの上部にある以下の行を探します:'],
+    ['   const SPREADSHEET_ID = \'ここにIDを入力\';'],
+    [''],
+    ['6. シングルクォート内に、このスプレッドシートのIDを貼り付けます'],
+    ['   例: const SPREADSHEET_ID = \'1k7-ye74rdU3ZRvxQRChjdofcNwSBPdJa76jhtRvicac\';'],
+    [''],
+    ['7. 保存ボタン（💾）をクリックして保存'],
+    [''],
+    ['② Webアプリとしてデプロイ'],
+    [''],
+    ['1. Apps Scriptエディタで「デプロイ」→「新しいデプロイ」を選択'],
+    [''],
+    ['2. 種類の選択で「ウェブアプリ」を選択'],
+    [''],
+    ['3. 説明に「初期デプロイ」など適切な説明を入力'],
+    [''],
+    ['4. 「次のユーザーとして実行」を「自分」に設定'],
+    [''],
+    ['5. 「アクセスできるユーザー」を「全員」に設定'],
+    [''],
+    ['6. 「デプロイ」ボタンをクリック'],
+    [''],
+    ['7. 表示されたWebアプリのURLをコピーして保存（後で使用します）'],
+    [''],
+    ['③ 動作確認'],
+    [''],
+    ['1. デプロイしたWebアプリのURLにアクセス'],
+    [''],
+    ['2. 「出勤」ボタンが表示されることを確認'],
+    [''],
+    ['3. 出勤ボタンをクリックして、正常に記録されることを確認'],
+    [''],
+    ['以上で初期設定は完了です！'],
+    [''],
+    ['【注意事項】'],
+    ['- スプレッドシートIDは必ず正しく設定してください'],
+    ['- WebアプリのURLは安全に保管してください'],
+    ['- 月次シート（例: 2025年11月）は自動的に作成されます'],
+    ['- 既存の月次シートは削除しても問題ありません'],
+  ];
+  
+  // データを書き込み
+  sheet.getRange(1, 1, data.length, 1).setValues(data.map(row => [row[0]]));
+  
+  // スタイル設定
+  const headerRange = sheet.getRange(1, 1);
+  headerRange.setFontSize(16);
+  headerRange.setFontWeight('bold');
+  headerRange.setBackground('#4CAF50');
+  headerRange.setFontColor('#FFFFFF');
+  
+  // 列幅を調整
+  sheet.setColumnWidth(1, 800);
+  
+  // セクション見出しのスタイル
+  const sectionHeaders = [5, 14, 30, 50]; // ①、②、③、注意事項の行番号
+  sectionHeaders.forEach(row => {
+    if (row <= data.length) {
+      const range = sheet.getRange(row, 1);
+      range.setFontWeight('bold');
+      range.setFontSize(12);
+      range.setBackground('#E8F5E9');
+    }
+  });
+}
+
+/**
+ * 使用方法シートの内容を設定
+ */
+function setupUsageSheet(sheet) {
+  const data = [
+    ['勤怠管理アプリ - 使用方法'],
+    [''],
+    ['このシートでは、勤怠管理アプリの使い方を説明します。'],
+    [''],
+    ['① シートを出す'],
+    [''],
+    ['1. WebアプリのURLにアクセスします'],
+    ['   （デプロイ時に取得したURLを使用）'],
+    [''],
+    ['2. ブラウザでアプリが開きます'],
+    [''],
+    ['3. 現在の日付と時刻が表示されます'],
+    [''],
+    ['② 出勤記録'],
+    [''],
+    ['1. 「出勤」ボタンをクリックします'],
+    [''],
+    ['2. 出勤時刻が自動的に記録されます'],
+    [''],
+    ['3. 記録が完了すると、退勤入力欄が表示されます'],
+    [''],
+    ['③ 退勤記録'],
+    [''],
+    ['1. 業務内容を入力します'],
+    ['   - 退勤入力欄のテキストエリアに、今日の業務内容を記入'],
+    ['   - 例: 「Webサイトのデザイン修正」「資料作成」など'],
+    [''],
+    ['2. 「退勤」ボタンをクリックします'],
+    [''],
+    ['3. 退勤時刻と業務内容が自動的に記録されます'],
+    [''],
+    ['4. 記録が完了すると、次の業務を開始できる状態になります'],
+    [''],
+    ['④ 1日に複数回の業務を行う場合'],
+    [''],
+    ['1. 退勤後、再度「次の業務を開始」ボタンをクリック'],
+    [''],
+    ['2. 新しい出勤時刻が記録されます'],
+    [''],
+    ['3. 業務終了時に、再度退勤記録を行います'],
+    [''],
+    ['⑤ スプレッドシートでの確認'],
+    [''],
+    ['1. このスプレッドシートを開きます'],
+    [''],
+    ['2. 現在の年月のシート（例: 2025年11月）を確認'],
+    [''],
+    ['3. 記録されたデータが表示されます'],
+    ['   - 稼働日: 記録した日付'],
+    ['   - 費目: 業務委託費'],
+    ['   - 開始時刻: 出勤時刻'],
+    ['   - 終了時刻: 退勤時刻'],
+    ['   - 休憩時間: 0:00（デフォルト）'],
+    ['   - 業務内容: 入力した業務内容'],
+    [''],
+    ['【よくある質問】'],
+    [''],
+    ['Q: 出勤時刻を間違えて記録してしまいました'],
+    ['A: 現在はアプリから直接修正できません。スプレッドシートで直接編集してください。'],
+    [''],
+    ['Q: 月が変わったらどうなりますか？'],
+    ['A: 自動的に新しい月のシートが作成されます（例: 2025年12月）。'],
+    [''],
+    ['Q: 過去のデータを確認したいです'],
+    ['A: スプレッドシートで過去の月のシートを確認してください。'],
+    [''],
+    ['Q: Webアプリにアクセスできません'],
+    ['A: デプロイが正しく行われているか、URLが正しいか確認してください。'],
+    [''],
+    ['以上で使用方法の説明は終わりです。'],
+    ['不明な点があれば、設定方法シートを確認するか、管理者に問い合わせてください。'],
+  ];
+  
+  // データを書き込み
+  sheet.getRange(1, 1, data.length, 1).setValues(data.map(row => [row[0]]));
+  
+  // スタイル設定
+  const headerRange = sheet.getRange(1, 1);
+  headerRange.setFontSize(16);
+  headerRange.setFontWeight('bold');
+  headerRange.setBackground('#2196F3');
+  headerRange.setFontColor('#FFFFFF');
+  
+  // 列幅を調整
+  sheet.setColumnWidth(1, 800);
+  
+  // セクション見出しのスタイル
+  const sectionHeaders = [5, 14, 25, 36, 47, 58]; // ①〜⑤、よくある質問の行番号
+  sectionHeaders.forEach(row => {
+    if (row <= data.length) {
+      const range = sheet.getRange(row, 1);
+      range.setFontWeight('bold');
+      range.setFontSize(12);
+      range.setBackground('#E3F2FD');
+    }
+  });
 }
