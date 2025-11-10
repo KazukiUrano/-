@@ -1,0 +1,14 @@
+# Google Apps Script
+.clasp.json
+.claspignore
+
+# ログファイル
+*.log
+
+# 環境変数
+.env
+
+# OS固有ファイル
+.DS_Store
+Thumbs.db
+
