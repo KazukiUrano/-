@@ -1,7 +1,7 @@
 /**
  * 作成者：浦野一輝
  * 作成日：2025-11-11 02:32:19
- * 最終更新：2025-11-11 04:16:52
+ * 最終更新：2025-11-11 04:23:30
  * 説明：勤怠管理アプリ - SheetOperations（機能別分割）
  * 
  * 【修正履歴（詳細版）】
@@ -33,6 +33,7 @@
  * - 2025-11-11 04:06:04 [浦野一輝]：UI改善 - エラーメッセージの表示を改善（フォントサイズ24px、太字、背景色とボーダーを追加）、開始時刻と終了時刻の関係エラーを終了時刻のエラーとして大きく表示（「終了時刻は開始時刻より遅い時間を入力してください」）
  * - 2025-11-11 04:07:36 [浦野一輝]：CSV出力機能改善 - Google Driveフォルダ作成機能追加、設定シートにGoogle DriveフォルダIDを記録、CSV出力時にシートを選択できるダイアログ追加、「出力CSV一覧」シートに履歴を上から追加、CSV形式でダウンロードできる機能追加
  * - 2025-11-11 04:10:57 [浦野一輝]：CSV出力シート選択UI改善 - 自由記述からプルダウン選択に変更、新しい順（降順）で表示
+ * - 2025-11-11 04:23:30 [浦野一輝]：getWebAppUrl関数を改善 - ScriptApp.getService()とgetDeployments()の両方でURL取得を試行、Workspaceドメインにも対応
  * 
  * 【push時の変更履歴（大きな変更のみ）】
  * - 2025-11-11 [浦野一輝]：フェーズ0実装（配布用スプレッドシートセットアップ）
@@ -164,18 +165,48 @@ function getSpreadsheetUrl() {
  */
 function getWebAppUrl() {
   try {
+    // まずScriptApp.getService()で取得を試みる
     const service = ScriptApp.getService();
-    if (!service) {
-      Logger.log('getWebAppUrl エラー: Webアプリがデプロイされていません');
-      return {
-        success: false,
-        message: 'Webアプリがデプロイされていません'
-      };
+    if (service) {
+      try {
+        const url = service.getUrl();
+        if (url && url.trim().length > 0) {
+          Logger.log('getWebAppUrl 成功（ScriptApp.getService）: ' + url);
+          return {
+            success: true,
+            url: url
+          };
+        }
+      } catch (e) {
+        Logger.log('getWebAppUrl: ScriptApp.getService().getUrl()でエラー: ' + e.toString());
+      }
     }
-    const url = service.getUrl();
+    
+    // ScriptApp.getService()で取得できない場合、デプロイ情報から取得を試みる
+    try {
+      const deployments = ScriptApp.getScript().getDeployments();
+      for (let i = 0; i < deployments.length; i++) {
+        const deployment = deployments[i];
+        if (deployment.getDeploymentType() === ScriptApp.DeploymentType.WEB_APP) {
+          const url = deployment.getUrl();
+          if (url && url.trim().length > 0) {
+            Logger.log('getWebAppUrl 成功（getDeployments）: ' + url);
+            return {
+              success: true,
+              url: url
+            };
+          }
+        }
+      }
+    } catch (e) {
+      Logger.log('getWebAppUrl: getDeployments()でエラー: ' + e.toString());
+    }
+    
+    // どちらも取得できない場合
+    Logger.log('getWebAppUrl エラー: Webアプリがデプロイされていません');
     return {
-      success: true,
-      url: url
+      success: false,
+      message: 'Webアプリがデプロイされていません。デプロイを実行してください。'
     };
   } catch (error) {
     Logger.log('getWebAppUrl エラー: ' + error.toString());

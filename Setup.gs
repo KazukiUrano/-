@@ -1,7 +1,7 @@
 /**
  * 作成者：浦野一輝
  * 作成日：2025-11-11 02:32:19
- * 最終更新：2025-11-11 04:18:49
+ * 最終更新：2025-11-11 04:25:15
  * 説明：勤怠管理アプリ - Setup（機能別分割）
  * 
  * 【修正履歴（詳細版）】
@@ -34,6 +34,8 @@
  * - 2025-11-11 04:07:36 [浦野一輝]：CSV出力機能改善 - Google Driveフォルダ作成機能追加、設定シートにGoogle DriveフォルダIDを記録、CSV出力時にシートを選択できるダイアログ追加、「出力CSV一覧」シートに履歴を上から追加、CSV形式でダウンロードできる機能追加
  * - 2025-11-11 04:10:57 [浦野一輝]：CSV出力シート選択UI改善 - 自由記述からプルダウン選択に変更、新しい順（降順）で表示
  * - 2025-11-11 04:18:49 [浦野一輝]：設定シートにGoogleドライブURLとアプリURLを追加（A1-B1にGoogleドライブURL、A2-B2にアプリURL）、取得できない場合は注釈でメモできる旨を記載
+ * - 2025-11-11 04:23:30 [浦野一輝]：updateWebAppUrlInSettingSheet関数を追加 - WebアプリURLを取得して設定シートに自動反映する機能を追加
+ * - 2025-11-11 04:25:15 [浦野一輝]：openScriptEditor関数を追加 - Apps Scriptエディタを開いてデプロイ手順を案内する機能を追加
  * 
  * 【push時の変更履歴（大きな変更のみ）】
  * - 2025-11-11 [浦野一輝]：フェーズ0実装（配布用スプレッドシートセットアップ）
@@ -314,8 +316,107 @@ function setupSettingSheet(sheet, driveFolderId) {
   // 設定方法シートの注釈に追加情報を記載
   if (!webAppUrl) {
     const noteText = 'デプロイしたアプリのURLをB2セルにメモできます。\n' +
-                     'デプロイ方法は「② Webアプリとしてデプロイ」セクションを参照してください。';
+                     'デプロイ方法は「② Webアプリとしてデプロイ」セクションを参照してください。\n' +
+                     'または、メニュー「⚙️ 勤怠管理」→「🔗 アプリURLを設定シートに反映」で自動取得できます。';
     sheet.getRange(2, 2).setNote(noteText);
+  }
+}
+
+/**
+ * Apps Scriptエディタを開く
+ * @return {void}
+ */
+function openScriptEditor() {
+  try {
+    const scriptId = ScriptApp.getScriptId();
+    const scriptUrl = 'https://script.google.com/home/projects/' + scriptId + '/edit';
+    
+    const ui = SpreadsheetApp.getUi();
+    const response = ui.alert(
+      'Apps Scriptエディタを開く',
+      'Apps Scriptエディタを開いてデプロイを実行できます。\n\n' +
+      'デプロイ手順:\n' +
+      '1. 「デプロイ」→「新しいデプロイ」を選択\n' +
+      '2. 種類で「ウェブアプリ」を選択\n' +
+      '3. 「次のユーザーとして実行」を「自分」に設定\n' +
+      '4. 「アクセスできるユーザー」を「全員」に設定\n' +
+      '5. 「デプロイ」をクリック\n' +
+      '6. 表示されたURLをコピーして、設定シートのB2セルに貼り付け\n\n' +
+      'Apps Scriptエディタを開きますか？',
+      ui.ButtonSet.YES_NO
+    );
+    
+    if (response === ui.Button.YES) {
+      // HTMLダイアログでリンクを表示（新しいタブで開く）
+      const html = HtmlService.createHtmlOutput(
+        '<html><body>' +
+        '<h2>Apps Scriptエディタを開く</h2>' +
+        '<p>以下のリンクをクリックしてApps Scriptエディタを開いてください。</p>' +
+        '<p><a href="' + scriptUrl + '" target="_blank" style="font-size: 16px; padding: 10px; background-color: #4285f4; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">Apps Scriptエディタを開く</a></p>' +
+        '<p style="margin-top: 20px; color: #666;">または、以下のURLをコピーしてブラウザで開いてください:</p>' +
+        '<p style="background-color: #f5f5f5; padding: 10px; border-radius: 4px; word-break: break-all;">' + scriptUrl + '</p>' +
+        '</body></html>'
+      )
+        .setWidth(600)
+        .setHeight(400);
+      
+      SpreadsheetApp.getUi().showModalDialog(html, 'Apps Scriptエディタを開く');
+    }
+  } catch (error) {
+    Logger.log('openScriptEditor エラー: ' + error.toString());
+    const ui = SpreadsheetApp.getUi();
+    ui.alert('エラー', 'Apps Scriptエディタを開く際にエラーが発生しました: ' + error.toString(), ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * WebアプリのURLを取得して設定シートに反映
+ * @return {void}
+ */
+function updateWebAppUrlInSettingSheet() {
+  try {
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const settingSheet = spreadsheet.getSheetByName('設定方法');
+    
+    if (!settingSheet) {
+      Logger.log('updateWebAppUrlInSettingSheet: 設定方法シートが見つかりません');
+      return;
+    }
+    
+    // WebアプリのURLを取得
+    const webAppUrlResult = getWebAppUrl();
+    
+    if (webAppUrlResult.success && webAppUrlResult.url) {
+      const webAppUrl = webAppUrlResult.url;
+      
+      // B2セルにURLを設定
+      settingSheet.getRange(2, 2).setValue(webAppUrl);
+      settingSheet.getRange(2, 2).setFormula('=HYPERLINK("' + webAppUrl + '","' + webAppUrl + '")');
+      settingSheet.getRange(2, 2).setNote(''); // 注釈をクリア
+      
+      Logger.log('updateWebAppUrlInSettingSheet: URLを設定しました: ' + webAppUrl);
+      
+      const ui = SpreadsheetApp.getUi();
+      ui.alert('完了', 'アプリURLを設定シートに反映しました。\n\nURL: ' + webAppUrl, ui.ButtonSet.OK);
+    } else {
+      Logger.log('updateWebAppUrlInSettingSheet: URLが取得できませんでした: ' + webAppUrlResult.message);
+      
+      const ui = SpreadsheetApp.getUi();
+      ui.alert('注意', 
+        'アプリURLを取得できませんでした。\n\n' +
+        '原因: ' + webAppUrlResult.message + '\n\n' +
+        '対処方法:\n' +
+        '1. Apps Scriptエディタで「デプロイ」→「新しいデプロイ」を実行してください\n' +
+        '2. デプロイ後、表示されたURLを手動でB2セルに入力してください\n' +
+        '3. または、再度「🔗 アプリURLを設定シートに反映」を実行してください',
+        ui.ButtonSet.OK);
+    }
+  } catch (error) {
+    Logger.log('updateWebAppUrlInSettingSheet エラー: ' + error.toString());
+    Logger.log('スタックトレース: ' + (error.stack || 'スタックトレースなし'));
+    
+    const ui = SpreadsheetApp.getUi();
+    ui.alert('エラー', 'アプリURLの反映中にエラーが発生しました: ' + error.toString(), ui.ButtonSet.OK);
   }
 }
 
