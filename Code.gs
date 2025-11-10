@@ -1,7 +1,7 @@
 /**
  * 作成者：浦野一輝
  * 作成日：2025-11-11 02:32:19
- * 最終更新：2025-11-11 03:58:22
+ * 最終更新：2025-11-11 04:02:23
  * 説明：勤怠管理アプリ - Google Apps Script（スプレッドシートとの連携処理）
  * 
  * 【修正履歴（詳細版）】
@@ -29,6 +29,7 @@
  * - 2025-11-11 03:50:52 [浦野一輝]：バグ修正と機能改善 - 時間形式のバリデーションエラーを修正（validateTime関数とupdateRecord関数で時刻データを文字列に変換してからバリデーション）、CSVダウンロード機能を削除してメニューから「CSV最新版を出力」ボタンでシートに出力する方式に変更（exportCSVToSheet関数を追加、WebアプリからCSVダウンロードページと関連コードを削除）
  * - 2025-11-11 03:53:09 [浦野一輝]：UI改善 - 編集フォームの入力フィールドにtitle属性を追加して、HTML5バリデーションエラーメッセージを「HH:mm形式で入力してください」にカスタマイズ
  * - 2025-11-11 03:58:22 [浦野一輝]：UI改善 - 編集フォームの時刻入力フィールドを選択式（時間・分のドロップダウン）に変更（initializeTimeSelects関数、parseTime関数、formatTime関数を追加、バリデーションと送信処理を更新）
+ * - 2025-11-11 04:02:23 [浦野一輝]：UI改善 - 編集フォームの日付入力フィールドを選択式（年・月・日のドロップダウン）に変更、時刻選択のフォントサイズを大きく（28px）に変更（initializeDateSelects関数、parseDate関数、formatDate関数、updateDaySelect関数を追加、年月変更時に日の選択を自動更新するイベントリスナーを追加）
  * 
  * 【push時の変更履歴（大きな変更のみ）】
  * - 2025-11-11 [浦野一輝]：フェーズ0実装（配布用スプレッドシートセットアップ）
@@ -1740,7 +1741,8 @@ function doGet(e) {
                     font-size: 24px;
                 }
                 .form-group input,
-                .form-group textarea {
+                .form-group textarea,
+                .form-group select {
                     width: 100%;
                     padding: 20px;
                     border: 3px solid #e0e0e0;
@@ -1748,6 +1750,32 @@ function doGet(e) {
                     font-size: 22px;
                     font-family: inherit;
                     transition: border-color 0.3s ease;
+                }
+                .form-group select {
+                    font-size: 28px;
+                    cursor: pointer;
+                }
+                .form-group .time-select-container {
+                    display: flex;
+                    gap: 10px;
+                    align-items: center;
+                }
+                .form-group .time-select-container select {
+                    flex: 1;
+                    font-size: 28px;
+                }
+                .form-group .time-select-container span {
+                    font-size: 28px;
+                    font-weight: bold;
+                }
+                .form-group .date-select-container {
+                    display: flex;
+                    gap: 10px;
+                    align-items: center;
+                }
+                .form-group .date-select-container select {
+                    flex: 1;
+                    font-size: 24px;
                 }
                 .form-group input:focus,
                 .form-group textarea:focus {
@@ -1980,18 +2008,28 @@ function doGet(e) {
                     <div class="modal-header">記録を編集</div>
                     <form class="modal-form" id="editForm">
                         <div class="form-group">
-                            <label for="editDate">稼働日 (yyyy/MM/dd)</label>
-                            <input type="text" id="editDate" required pattern="\\d{4}/\\d{2}/\\d{2}" placeholder="2025/11/11" title="日付はyyyy/MM/dd形式で入力してください（例: 2025/11/11）">
+                            <label for="editDate">稼働日</label>
+                            <div class="date-select-container">
+                                <select id="editDateYear" required>
+                                    <option value="">年</option>
+                                </select>
+                                <select id="editDateMonth" required>
+                                    <option value="">月</option>
+                                </select>
+                                <select id="editDateDay" required>
+                                    <option value="">日</option>
+                                </select>
+                            </div>
                             <div class="error-message" id="editDateError"></div>
                         </div>
                         <div class="form-group">
                             <label for="editStartTime">開始時刻</label>
-                            <div style="display: flex; gap: 10px; align-items: center;">
-                                <select id="editStartTimeHour" required style="flex: 1;">
+                            <div class="time-select-container">
+                                <select id="editStartTimeHour" required>
                                     <option value="">時</option>
                                 </select>
                                 <span>:</span>
-                                <select id="editStartTimeMinute" required style="flex: 1;">
+                                <select id="editStartTimeMinute" required>
                                     <option value="">分</option>
                                 </select>
                             </div>
@@ -1999,12 +2037,12 @@ function doGet(e) {
                         </div>
                         <div class="form-group">
                             <label for="editEndTime">終了時刻</label>
-                            <div style="display: flex; gap: 10px; align-items: center;">
-                                <select id="editEndTimeHour" style="flex: 1;">
+                            <div class="time-select-container">
+                                <select id="editEndTimeHour">
                                     <option value="">時</option>
                                 </select>
                                 <span>:</span>
-                                <select id="editEndTimeMinute" style="flex: 1;">
+                                <select id="editEndTimeMinute">
                                     <option value="">分</option>
                                 </select>
                             </div>
@@ -2012,12 +2050,12 @@ function doGet(e) {
                         </div>
                         <div class="form-group">
                             <label for="editBreakTime">休憩時間</label>
-                            <div style="display: flex; gap: 10px; align-items: center;">
-                                <select id="editBreakTimeHour" style="flex: 1;">
+                            <div class="time-select-container">
+                                <select id="editBreakTimeHour">
                                     <option value="0">0</option>
                                 </select>
                                 <span>:</span>
-                                <select id="editBreakTimeMinute" style="flex: 1;">
+                                <select id="editBreakTimeMinute">
                                     <option value="00">00</option>
                                 </select>
                             </div>
@@ -2037,6 +2075,96 @@ function doGet(e) {
             </div>
 
             <script>
+                // 日付選択用のセレクトボックスを初期化
+                function initializeDateSelects() {
+                    const currentYear = new Date().getFullYear();
+                    
+                    // 年（現在の年から前後5年）
+                    const yearSelect = document.getElementById('editDateYear');
+                    if (yearSelect) {
+                        while (yearSelect.children.length > 1) {
+                            yearSelect.removeChild(yearSelect.lastChild);
+                        }
+                        for (let i = currentYear - 5; i <= currentYear + 5; i++) {
+                            const option = document.createElement('option');
+                            option.value = i;
+                            option.textContent = i + '年';
+                            yearSelect.appendChild(option);
+                        }
+                    }
+                    
+                    // 月（1-12）
+                    const monthSelect = document.getElementById('editDateMonth');
+                    if (monthSelect) {
+                        while (monthSelect.children.length > 1) {
+                            monthSelect.removeChild(monthSelect.lastChild);
+                        }
+                        for (let i = 1; i <= 12; i++) {
+                            const option = document.createElement('option');
+                            option.value = String(i).padStart(2, '0');
+                            option.textContent = i + '月';
+                            monthSelect.appendChild(option);
+                        }
+                    }
+                    
+                    // 日（1-31）は月が選択されたときに動的に更新
+                    updateDaySelect();
+                }
+                
+                // 日付の日選択を更新（月と年に基づいて）
+                function updateDaySelect() {
+                    const yearSelect = document.getElementById('editDateYear');
+                    const monthSelect = document.getElementById('editDateMonth');
+                    const daySelect = document.getElementById('editDateDay');
+                    
+                    if (!yearSelect || !monthSelect || !daySelect) {
+                        return;
+                    }
+                    
+                    const year = parseInt(yearSelect.value, 10);
+                    const month = parseInt(monthSelect.value, 10);
+                    
+                    // 日選択をクリア
+                    while (daySelect.children.length > 1) {
+                        daySelect.removeChild(daySelect.lastChild);
+                    }
+                    
+                    if (year && month) {
+                        // その月の日数を取得
+                        const daysInMonth = new Date(year, month, 0).getDate();
+                        for (let i = 1; i <= daysInMonth; i++) {
+                            const option = document.createElement('option');
+                            option.value = String(i).padStart(2, '0');
+                            option.textContent = i + '日';
+                            daySelect.appendChild(option);
+                        }
+                    }
+                }
+                
+                // 日付文字列（yyyy/MM/dd）を年・月・日に分割
+                function parseDate(dateStr) {
+                    if (!dateStr || typeof dateStr !== 'string') {
+                        return { year: '', month: '', day: '' };
+                    }
+                    const parts = dateStr.split('/');
+                    if (parts.length !== 3) {
+                        return { year: '', month: '', day: '' };
+                    }
+                    return {
+                        year: parts[0] || '',
+                        month: parts[1] || '',
+                        day: parts[2] || ''
+                    };
+                }
+                
+                // 年・月・日から日付文字列（yyyy/MM/dd）を生成
+                function formatDate(year, month, day) {
+                    if (!year || !month || !day) {
+                        return '';
+                    }
+                    return year + '/' + month + '/' + day;
+                }
+                
                 // 時刻選択用のセレクトボックスを初期化
                 function initializeTimeSelects() {
                     // 時間（0-23）のオプションを生成
@@ -2067,7 +2195,7 @@ function doGet(e) {
                             while (select.children.length > 1) {
                                 select.removeChild(select.lastChild);
                             }
-                            // 0-59のオプションを追加（5分刻み）
+                            // 0-59のオプションを追加
                             for (let i = 0; i <= 59; i++) {
                                 const option = document.createElement('option');
                                 option.value = String(i).padStart(2, '0');
@@ -2118,6 +2246,7 @@ function doGet(e) {
                 function initializeApp() {
                     try {
                         console.log('=== initializeApp 開始 ===');
+                        initializeDateSelects();
                         initializeTimeSelects();
                         updateCurrentDate();
                         loadTodayStatus();
@@ -2204,6 +2333,18 @@ function doGet(e) {
                             console.log('editForm イベントリスナー設定完了');
                         } else {
                             console.warn('editForm が見つかりません');
+                        }
+                        
+                        // 日付選択の年月変更時に日の選択を更新
+                        const editDateYear = document.getElementById('editDateYear');
+                        const editDateMonth = document.getElementById('editDateMonth');
+                        if (editDateYear) {
+                            editDateYear.addEventListener('change', updateDaySelect);
+                            console.log('editDateYear イベントリスナー設定完了');
+                        }
+                        if (editDateMonth) {
+                            editDateMonth.addEventListener('change', updateDaySelect);
+                            console.log('editDateMonth イベントリスナー設定完了');
                         }
                         
                         // モーダルの外側をクリックしたら閉じる
@@ -2652,7 +2793,16 @@ function doGet(e) {
                                 const record = result.data.find(r => r.row === row);
                                 if (record) {
                                     document.getElementById('editRow').value = record.row;
-                                    document.getElementById('editDate').value = record.date || '';
+                                    
+                                    // 日付をセレクトボックスに設定
+                                    const date = parseDate(record.date || '');
+                                    document.getElementById('editDateYear').value = date.year;
+                                    document.getElementById('editDateMonth').value = date.month;
+                                    // 月が設定されたら日の選択を更新
+                                    if (date.month) {
+                                        updateDaySelect();
+                                    }
+                                    document.getElementById('editDateDay').value = date.day;
                                     
                                     // 開始時刻をセレクトボックスに設定
                                     const startTime = parseTime(record.startTime || '');
@@ -2714,7 +2864,9 @@ function doGet(e) {
                     let isValid = true;
                     clearEditErrors();
                     
-                    const date = document.getElementById('editDate').value.trim();
+                    const dateYear = document.getElementById('editDateYear').value;
+                    const dateMonth = document.getElementById('editDateMonth').value;
+                    const dateDay = document.getElementById('editDateDay').value;
                     const startTimeHour = document.getElementById('editStartTimeHour').value;
                     const startTimeMinute = document.getElementById('editStartTimeMinute').value;
                     const endTimeHour = document.getElementById('editEndTimeHour').value;
@@ -2723,11 +2875,8 @@ function doGet(e) {
                     const breakTimeMinute = document.getElementById('editBreakTimeMinute').value;
                     
                     // 日付のバリデーション
-                    if (!date) {
-                        document.getElementById('editDateError').textContent = '日付を入力してください';
-                        isValid = false;
-                    } else if (!new RegExp('^\\d{4}/\\d{2}/\\d{2}$').test(date)) {
-                        document.getElementById('editDateError').textContent = '日付はyyyy/MM/dd形式で入力してください';
+                    if (!dateYear || !dateMonth || !dateDay) {
+                        document.getElementById('editDateError').textContent = '日付を選択してください';
                         isValid = false;
                     }
                     
@@ -2763,7 +2912,10 @@ function doGet(e) {
                     
                     const row = parseInt(document.getElementById('editRow').value);
                     
-                    // セレクトボックスの値を結合してHH:mm形式の文字列を作成
+                    // セレクトボックスの値を結合して日付と時刻の文字列を作成
+                    const dateYear = document.getElementById('editDateYear').value;
+                    const dateMonth = document.getElementById('editDateMonth').value;
+                    const dateDay = document.getElementById('editDateDay').value;
                     const startTimeHour = document.getElementById('editStartTimeHour').value;
                     const startTimeMinute = document.getElementById('editStartTimeMinute').value;
                     const endTimeHour = document.getElementById('editEndTimeHour').value;
@@ -2772,7 +2924,7 @@ function doGet(e) {
                     const breakTimeMinute = document.getElementById('editBreakTimeMinute').value;
                     
                     const recordData = {
-                        date: document.getElementById('editDate').value.trim(),
+                        date: formatDate(dateYear, dateMonth, dateDay),
                         startTime: formatTime(startTimeHour, startTimeMinute),
                         endTime: (endTimeHour && endTimeMinute) ? formatTime(endTimeHour, endTimeMinute) : '',
                         breakTime: (breakTimeHour && breakTimeMinute) ? formatTime(breakTimeHour, breakTimeMinute) : '0:00',
