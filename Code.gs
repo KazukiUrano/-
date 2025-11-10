@@ -1,7 +1,7 @@
 /**
  * 作成者：浦野一輝
  * 作成日：2025-11-11 02:32:19
- * 最終更新：2025-11-11 04:07:36
+ * 最終更新：2025-11-11 04:10:57
  * 説明：勤怠管理アプリ - Google Apps Script（スプレッドシートとの連携処理）
  * 
  * 【修正履歴（詳細版）】
@@ -32,6 +32,7 @@
  * - 2025-11-11 04:02:23 [浦野一輝]：UI改善 - 編集フォームの日付入力フィールドを選択式（年・月・日のドロップダウン）に変更、時刻選択のフォントサイズを大きく（28px）に変更（initializeDateSelects関数、parseDate関数、formatDate関数、updateDaySelect関数を追加、年月変更時に日の選択を自動更新するイベントリスナーを追加）
  * - 2025-11-11 04:06:04 [浦野一輝]：UI改善 - エラーメッセージの表示を改善（フォントサイズ24px、太字、背景色とボーダーを追加）、開始時刻と終了時刻の関係エラーを終了時刻のエラーとして大きく表示（「終了時刻は開始時刻より遅い時間を入力してください」）
  * - 2025-11-11 04:07:36 [浦野一輝]：CSV出力機能改善 - Google Driveフォルダ作成機能追加、設定シートにGoogle DriveフォルダIDを記録、CSV出力時にシートを選択できるダイアログ追加、「出力CSV一覧」シートに履歴を上から追加、CSV形式でダウンロードできる機能追加
+ * - 2025-11-11 04:10:57 [浦野一輝]：CSV出力シート選択UI改善 - 自由記述からプルダウン選択に変更、新しい順（降順）で表示
  * 
  * 【push時の変更履歴（大きな変更のみ）】
  * - 2025-11-11 [浦野一輝]：フェーズ0実装（配布用スプレッドシートセットアップ）
@@ -1093,20 +1094,13 @@ function exportCSVToSheet() {
       return;
     }
     
-    // シート選択ダイアログを表示
-    const selectedSheetName = ui.prompt(
-      'CSV出力 - シート選択',
-      '出力するシートを選択してください：\n\n' + availableSheets.map(function(sheet, index) {
-        return (index + 1) + '. ' + sheet;
-      }).join('\n') + '\n\nシート名を入力してください：',
-      ui.ButtonSet.OK_CANCEL
-    );
-    
-    if (selectedSheetName.getSelectedButton() !== ui.Button.OK) {
+    // シート選択ダイアログを表示（プルダウン）
+    const selectedSheetName = showSheetSelectDialog(availableSheets);
+    if (!selectedSheetName) {
       return; // キャンセルされた場合
     }
     
-    const sheetName = selectedSheetName.getResponseText().trim();
+    const sheetName = selectedSheetName;
     if (!sheetName || availableSheets.indexOf(sheetName) === -1) {
       ui.alert('エラー', '無効なシート名です。利用可能なシートから選択してください。', ui.ButtonSet.OK);
       return;
@@ -1411,6 +1405,127 @@ function addCsvOutputHistory(sheetName, fileName, fileId, fileUrl, rowCount) {
     Logger.log('addCsvOutputHistory エラー: ' + error.toString());
     Logger.log('スタックトレース: ' + (error.stack || 'スタックトレースなし'));
   }
+}
+
+/**
+ * シート選択ダイアログを表示（プルダウン）
+ * @param {Array<string>} availableSheets - 利用可能なシート一覧（新しい順）
+ * @return {string|null} 選択されたシート名、キャンセル時はnull
+ */
+function showSheetSelectDialog(availableSheets) {
+  try {
+    const htmlTemplate = HtmlService.createTemplate(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <base target="_top">
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              padding: 20px;
+              width: 400px;
+            }
+            h2 {
+              margin-top: 0;
+              color: #1976D2;
+            }
+            label {
+              display: block;
+              margin-bottom: 10px;
+              font-weight: bold;
+            }
+            select {
+              width: 100%;
+              padding: 8px;
+              font-size: 14px;
+              border: 1px solid #ccc;
+              border-radius: 4px;
+              margin-bottom: 20px;
+            }
+            .button-container {
+              text-align: right;
+            }
+            button {
+              padding: 10px 20px;
+              font-size: 14px;
+              border: none;
+              border-radius: 4px;
+              cursor: pointer;
+              margin-left: 10px;
+            }
+            .btn-ok {
+              background-color: #4CAF50;
+              color: white;
+            }
+            .btn-ok:hover {
+              background-color: #45a049;
+            }
+            .btn-cancel {
+              background-color: #f44336;
+              color: white;
+            }
+            .btn-cancel:hover {
+              background-color: #da190b;
+            }
+          </style>
+        </head>
+        <body>
+          <h2>CSV出力 - シート選択</h2>
+          <label for="sheetSelect">出力するシートを選択してください：</label>
+          <select id="sheetSelect" name="sheetSelect">
+            <? for (var i = 0; i < sheets.length; i++) { ?>
+              <option value="<?= sheets[i] ?>"><?= sheets[i] ?></option>
+            <? } ?>
+          </select>
+          <div class="button-container">
+            <button class="btn-cancel" onclick="google.script.host.close()">キャンセル</button>
+            <button class="btn-ok" onclick="selectSheet()">OK</button>
+          </div>
+          <script>
+            function selectSheet() {
+              const select = document.getElementById('sheetSelect');
+              const selectedSheet = select.value;
+              google.script.host.setHeight(200);
+              google.script.run.withSuccessHandler(function() {
+                google.script.host.close();
+              }).withFailureHandler(function(error) {
+                alert('エラー: ' + error.message);
+              }).returnSelectedSheet(selectedSheet);
+            }
+          </script>
+        </body>
+      </html>
+    `);
+    
+    htmlTemplate.sheets = availableSheets;
+    const html = htmlTemplate.evaluate()
+      .setWidth(450)
+      .setHeight(200);
+    
+    const ui = SpreadsheetApp.getUi();
+    ui.showModalDialog(html, 'CSV出力 - シート選択');
+    
+    // 選択されたシート名を取得（スクリプトプロパティから）
+    const properties = PropertiesService.getScriptProperties();
+    const selectedSheet = properties.getProperty('SELECTED_SHEET_NAME');
+    properties.deleteProperty('SELECTED_SHEET_NAME');
+    
+    return selectedSheet || null;
+  } catch (error) {
+    Logger.log('showSheetSelectDialog エラー: ' + error.toString());
+    Logger.log('スタックトレース: ' + (error.stack || 'スタックトレースなし'));
+    return null;
+  }
+}
+
+/**
+ * 選択されたシート名を保存（HTMLダイアログから呼び出される）
+ * @param {string} sheetName - 選択されたシート名
+ * @return {void}
+ */
+function returnSelectedSheet(sheetName) {
+  const properties = PropertiesService.getScriptProperties();
+  properties.setProperty('SELECTED_SHEET_NAME', sheetName);
 }
 
 /**
