@@ -42,22 +42,6 @@ graph LR
     
     class P0 completed
     class P1A,P1B,P2,P3,P4,P5 notStarted
-    
-    %% フェーズ0の詳細
-    P0_1[初期設定機能<br/>✅ 完了]
-    P0_2[よくある質問シート<br/>✅ 完了]
-    P0_3[clasp設定・プッシュ<br/>✅ 完了]
-    P0_4[動作確認<br/>✅ 完了]
-    P0_5[記述修正<br/>⚪ 未着手<br/>低優先度]
-    
-    P0 --> P0_1
-    P0 --> P0_2
-    P0 --> P0_3
-    P0 --> P0_4
-    P0 --> P0_5
-    
-    class P0_1,P0_2,P0_3,P0_4 completed
-    class P0_5 notStarted
 ```
 
 ### 凡例
