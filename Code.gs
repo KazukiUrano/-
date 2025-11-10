@@ -1,7 +1,7 @@
 /**
  * 作成者：浦野一輝
  * 作成日：2025-11-11 02:32:19
- * 最終更新：2025-11-11 04:06:04
+ * 最終更新：2025-11-11 04:07:36
  * 説明：勤怠管理アプリ - Google Apps Script（スプレッドシートとの連携処理）
  * 
  * 【修正履歴（詳細版）】
@@ -31,6 +31,7 @@
  * - 2025-11-11 03:58:22 [浦野一輝]：UI改善 - 編集フォームの時刻入力フィールドを選択式（時間・分のドロップダウン）に変更（initializeTimeSelects関数、parseTime関数、formatTime関数を追加、バリデーションと送信処理を更新）
  * - 2025-11-11 04:02:23 [浦野一輝]：UI改善 - 編集フォームの日付入力フィールドを選択式（年・月・日のドロップダウン）に変更、時刻選択のフォントサイズを大きく（28px）に変更（initializeDateSelects関数、parseDate関数、formatDate関数、updateDaySelect関数を追加、年月変更時に日の選択を自動更新するイベントリスナーを追加）
  * - 2025-11-11 04:06:04 [浦野一輝]：UI改善 - エラーメッセージの表示を改善（フォントサイズ24px、太字、背景色とボーダーを追加）、開始時刻と終了時刻の関係エラーを終了時刻のエラーとして大きく表示（「終了時刻は開始時刻より遅い時間を入力してください」）
+ * - 2025-11-11 04:07:36 [浦野一輝]：CSV出力機能改善 - Google Driveフォルダ作成機能追加、設定シートにGoogle DriveフォルダIDを記録、CSV出力時にシートを選択できるダイアログ追加、「出力CSV一覧」シートに履歴を上から追加、CSV形式でダウンロードできる機能追加
  * 
  * 【push時の変更履歴（大きな変更のみ）】
  * - 2025-11-11 [浦野一輝]：フェーズ0実装（配布用スプレッドシートセットアップ）
@@ -1079,17 +1080,40 @@ function exportCSVToSheet() {
     const ui = SpreadsheetApp.getUi();
     const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     
-    // 現在の月のシート名を取得
-    const currentSheetName = getCurrentSheetName();
-    const sheet = spreadsheet.getSheetByName(currentSheetName);
+    // 利用可能なシート一覧を取得
+    const availableSheetsResult = getAvailableSheets();
+    if (!availableSheetsResult.success) {
+      ui.alert('エラー', availableSheetsResult.message, ui.ButtonSet.OK);
+      return;
+    }
     
-    if (!sheet) {
-      ui.alert('エラー', '現在の月のシート（' + currentSheetName + '）が見つかりません。', ui.ButtonSet.OK);
+    const availableSheets = availableSheetsResult.data.sheets;
+    if (availableSheets.length === 0) {
+      ui.alert('エラー', '出力できるシートが見つかりません。', ui.ButtonSet.OK);
+      return;
+    }
+    
+    // シート選択ダイアログを表示
+    const selectedSheetName = ui.prompt(
+      'CSV出力 - シート選択',
+      '出力するシートを選択してください：\n\n' + availableSheets.map(function(sheet, index) {
+        return (index + 1) + '. ' + sheet;
+      }).join('\n') + '\n\nシート名を入力してください：',
+      ui.ButtonSet.OK_CANCEL
+    );
+    
+    if (selectedSheetName.getSelectedButton() !== ui.Button.OK) {
+      return; // キャンセルされた場合
+    }
+    
+    const sheetName = selectedSheetName.getResponseText().trim();
+    if (!sheetName || availableSheets.indexOf(sheetName) === -1) {
+      ui.alert('エラー', '無効なシート名です。利用可能なシートから選択してください。', ui.ButtonSet.OK);
       return;
     }
     
     // シートデータを取得
-    const sheetDataResult = getSheetData(currentSheetName);
+    const sheetDataResult = getSheetData(sheetName);
     
     if (!sheetDataResult.success) {
       ui.alert('エラー', sheetDataResult.message, ui.ButtonSet.OK);
@@ -1099,38 +1123,34 @@ function exportCSVToSheet() {
     const headers = sheetDataResult.data.headers;
     const rows = sheetDataResult.data.rows;
     
-    // CSV出力用のシートを作成または取得
-    const csvSheetName = currentSheetName + '_CSV出力';
-    let csvSheet = spreadsheet.getSheetByName(csvSheetName);
+    // CSV形式に変換
+    const csvContent = convertToCSV(headers, rows);
     
-    if (!csvSheet) {
-      csvSheet = spreadsheet.insertSheet(csvSheetName);
-    } else {
-      csvSheet.clear();
+    // Google DriveフォルダIDを取得
+    const driveFolderId = getDriveFolderId();
+    if (!driveFolderId) {
+      ui.alert('エラー', 'Google Driveフォルダが設定されていません。初期設定を実行してください。', ui.ButtonSet.OK);
+      return;
     }
     
-    // ヘッダー行を出力
-    csvSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    // Google DriveにCSVファイルを作成
+    const folder = DriveApp.getFolderById(driveFolderId);
+    const fileName = sheetName + '_勤怠記録_' + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyyMMdd_HHmmss') + '.csv';
+    const file = folder.createFile(fileName, csvContent, MimeType.CSV);
     
-    // データ行を出力
-    if (rows.length > 0) {
-      csvSheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
-    }
+    // 「出力CSV一覧」シートに履歴を追加（上に追加）
+    addCsvOutputHistory(sheetName, fileName, file.getId(), file.getUrl(), rows.length);
     
-    // ヘッダー行を太字にする
-    csvSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+    ui.alert('完了', 
+      'CSV出力が完了しました。\n\n' +
+      'シート名: ' + sheetName + '\n' +
+      'ファイル名: ' + fileName + '\n' +
+      '行数: ' + (rows.length + 1) + '行\n' +
+      '保存先: Google Drive\n\n' +
+      '「出力CSV一覧」シートでダウンロードリンクを確認できます。', 
+      ui.ButtonSet.OK);
     
-    // 列幅を自動調整
-    for (let i = 1; i <= headers.length; i++) {
-      csvSheet.autoResizeColumn(i);
-    }
-    
-    // CSV出力シートに移動
-    csvSheet.activate();
-    
-    ui.alert('完了', 'CSV出力が完了しました。\nシート名: ' + csvSheetName + '\n行数: ' + (rows.length + 1) + '行', ui.ButtonSet.OK);
-    
-    Logger.log('CSV出力成功: ' + csvSheetName + ' (' + rows.length + '行)');
+    Logger.log('CSV出力成功: ' + fileName + ' (' + rows.length + '行)');
   } catch (error) {
     const ui = SpreadsheetApp.getUi();
     Logger.log('exportCSVToSheet エラー: ' + error.toString());
@@ -1290,6 +1310,135 @@ function convertToCSV(headers, rows) {
   
   // BOMを追加（Excelで文字化けを防ぐため）
   return '\uFEFF' + csvRows.join('\n');
+}
+
+/**
+ * Google DriveフォルダIDを取得（設定シートから取得）
+ * @return {string|null} Google DriveフォルダID、取得できない場合はnull
+ */
+function getDriveFolderId() {
+  try {
+    // まずスクリプトプロパティから取得を試みる
+    const properties = PropertiesService.getScriptProperties();
+    const folderId = properties.getProperty('DRIVE_FOLDER_ID');
+    if (folderId && folderId.trim().length > 0) {
+      return folderId.trim();
+    }
+    
+    // 設定シートから取得を試みる
+    const spreadsheetId = getSpreadsheetId();
+    const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+    const settingSheet = spreadsheet.getSheetByName('設定方法');
+    
+    if (!settingSheet) {
+      return null;
+    }
+    
+    // 設定シートから「Google DriveフォルダID:」という行を探す
+    const lastRow = settingSheet.getLastRow();
+    for (let i = 1; i <= lastRow; i++) {
+      const cellValue = settingSheet.getRange(i, 1).getValue();
+      if (typeof cellValue === 'string') {
+        // 同じ行にIDが含まれている可能性がある
+        const match = cellValue.match(/Google DriveフォルダID:\s*([^\s\n]+)/);
+        if (match && match[1] && match[1] !== '（未設定）') {
+          const extractedId = match[1].trim();
+          // スクリプトプロパティにも保存
+          properties.setProperty('DRIVE_FOLDER_ID', extractedId);
+          return extractedId;
+        }
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    Logger.log('getDriveFolderId エラー: ' + error.toString());
+    Logger.log('スタックトレース: ' + (error.stack || 'スタックトレースなし'));
+    return null;
+  }
+}
+
+/**
+ * CSV出力履歴を「出力CSV一覧」シートに追加（上に追加）
+ * @param {string} sheetName - 出力したシート名
+ * @param {string} fileName - ファイル名
+ * @param {string} fileId - Google DriveファイルID
+ * @param {string} fileUrl - Google DriveファイルURL
+ * @param {number} rowCount - データ行数
+ * @return {void}
+ */
+function addCsvOutputHistory(sheetName, fileName, fileId, fileUrl, rowCount) {
+  try {
+    const spreadsheetId = getSpreadsheetId();
+    const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+    
+    // 「出力CSV一覧」シートを作成または取得
+    let historySheet = spreadsheet.getSheetByName('出力CSV一覧');
+    if (!historySheet) {
+      historySheet = spreadsheet.insertSheet('出力CSV一覧');
+      
+      // ヘッダー行を設定
+      const headers = ['出力日時', 'シート名', 'ファイル名', 'データ行数', 'ダウンロードリンク'];
+      historySheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      historySheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+      historySheet.getRange(1, 1, 1, headers.length).setBackground('#E8F5E9');
+      
+      // 列幅を調整
+      historySheet.setColumnWidth(1, 180); // 出力日時
+      historySheet.setColumnWidth(2, 150); // シート名
+      historySheet.setColumnWidth(3, 300); // ファイル名
+      historySheet.setColumnWidth(4, 100); // データ行数
+      historySheet.setColumnWidth(5, 400); // ダウンロードリンク
+    }
+    
+    // 現在の日時を取得
+    const now = new Date();
+    const outputDateTime = Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss');
+    
+    // 新しい行を2行目に挿入（上に追加）
+    historySheet.insertRowBefore(2);
+    
+    // データを設定
+    const linkFormula = '=HYPERLINK("' + fileUrl + '","ダウンロード")';
+    historySheet.getRange(2, 1).setValue(outputDateTime);
+    historySheet.getRange(2, 2).setValue(sheetName);
+    historySheet.getRange(2, 3).setValue(fileName);
+    historySheet.getRange(2, 4).setValue(rowCount);
+    historySheet.getRange(2, 5).setFormula(linkFormula);
+    
+    Logger.log('CSV出力履歴を追加: ' + fileName);
+  } catch (error) {
+    Logger.log('addCsvOutputHistory エラー: ' + error.toString());
+    Logger.log('スタックトレース: ' + (error.stack || 'スタックトレースなし'));
+  }
+}
+
+/**
+ * Google Driveフォルダを作成
+ * @return {string|null} 作成したフォルダのID、失敗時はnull
+ */
+function createDriveFolder() {
+  try {
+    const folderName = '勤怠管理_CSV出力';
+    const folders = DriveApp.getFoldersByName(folderName);
+    
+    let folder;
+    if (folders.hasNext()) {
+      // 既に存在する場合は既存のフォルダを使用
+      folder = folders.next();
+      Logger.log('既存のGoogle Driveフォルダを使用: ' + folder.getId());
+    } else {
+      // 新規作成
+      folder = DriveApp.createFolder(folderName);
+      Logger.log('Google Driveフォルダを作成: ' + folder.getId());
+    }
+    
+    return folder.getId();
+  } catch (error) {
+    Logger.log('createDriveFolder エラー: ' + error.toString());
+    Logger.log('スタックトレース: ' + (error.stack || 'スタックトレースなし'));
+    return null;
+  }
 }
 
 /**
@@ -3106,8 +3255,18 @@ function setupInitialConfiguration() {
       faqSheet.clear();
     }
     
+    // Google Driveフォルダを作成
+    const driveFolderId = createDriveFolder();
+    if (!driveFolderId) {
+      ui.alert('警告', 'Google Driveフォルダの作成に失敗しました。CSV出力機能を使用する場合は、手動でフォルダを作成して設定シートにIDを記録してください。', ui.ButtonSet.OK);
+    } else {
+      // スクリプトプロパティに保存
+      properties.setProperty('DRIVE_FOLDER_ID', driveFolderId);
+      Logger.log('Google DriveフォルダIDを保存: ' + driveFolderId);
+    }
+    
     // 設定シートの内容を設定
-    setupSettingSheet(settingSheet);
+    setupSettingSheet(settingSheet, driveFolderId);
     
     // 使用方法シートの内容を設定
     setupUsageSheet(usageSheet);
@@ -3123,9 +3282,13 @@ function setupInitialConfiguration() {
     spreadsheet.setActiveSheet(faqSheet);
     spreadsheet.moveActiveSheet(2);
     
-    ui.alert('初期設定が完了しました！', 
-             'このスプレッドシートのIDを自動的に設定しました。\n（ID: ' + currentSpreadsheetId + '）\n\n「設定方法」「使用方法」「よくある質問」シートを作成しました。\nそれぞれのシートを確認してください。', 
-             ui.ButtonSet.OK);
+    let alertMessage = '初期設定が完了しました！\n\nこのスプレッドシートのIDを自動的に設定しました。\n（ID: ' + currentSpreadsheetId + '）\n\n';
+    if (driveFolderId) {
+      alertMessage += 'Google Driveフォルダを作成しました。\n（フォルダID: ' + driveFolderId + '）\n\n';
+    }
+    alertMessage += '「設定方法」「使用方法」「よくある質問」シートを作成しました。\nそれぞれのシートを確認してください。';
+    
+    ui.alert('初期設定が完了しました！', alertMessage, ui.ButtonSet.OK);
     
     return {
       success: true,
@@ -3144,9 +3307,10 @@ function setupInitialConfiguration() {
 /**
  * 設定シートの内容を設定
  * @param {Sheet} sheet - 設定シート
+ * @param {string|null} driveFolderId - Google DriveフォルダID（オプション）
  * @return {void}
  */
-function setupSettingSheet(sheet) {
+function setupSettingSheet(sheet, driveFolderId) {
   const data = [
     ['勤怠管理アプリ - 設定方法'],
     [''],
@@ -3227,7 +3391,26 @@ function setupSettingSheet(sheet) {
     ['- 既存の月次シートは削除しても問題ありません'],
     ['- スプレッドシートをコピーした場合は、新しいスプレッドシートで再度初期設定を実行してください'],
     ['- 複数ユーザーで利用する場合は、共有設定を行ってから各ユーザーにWebアプリのURLを配布してください'],
+    [''],
+    ['⑤ Google Driveフォルダ設定'],
+    [''],
+    ['初期設定時に自動的にGoogle Driveフォルダが作成されます。'],
+    [''],
+    ['【Google DriveフォルダID】'],
   ];
+  
+  // Google DriveフォルダIDを追加
+  if (driveFolderId) {
+    data.push(['Google DriveフォルダID: ' + driveFolderId]);
+  } else {
+    data.push(['Google DriveフォルダID: （未設定）']);
+    data.push(['']);
+    data.push(['手動で設定する場合:']);
+    data.push(['1. Google Driveで「勤怠管理_CSV出力」という名前のフォルダを作成']);
+    data.push(['2. フォルダを右クリックして「リンクを取得」を選択']);
+    data.push(['3. リンクからフォルダIDを抽出（例: https://drive.google.com/drive/folders/XXXXXXXXXXXXXXXX）']);
+    data.push(['4. 上記の「Google DriveフォルダID:」の行にIDを記入']);
+  }
   
   // データを書き込み
   sheet.getRange(1, 1, data.length, 1).setValues(data.map(row => [row[0]]));
@@ -3243,15 +3426,24 @@ function setupSettingSheet(sheet) {
   sheet.setColumnWidth(1, 800);
   
   // セクション見出しのスタイル
-  const sectionHeaders = [5, 14, 30, 50, 72, 90]; // ①、②、③、④、共有設定の注意事項、注意事項の行番号
+  const sectionHeaders = [5, 14, 30, 50, 72, 90, data.length - (driveFolderId ? 3 : 9)]; // ①、②、③、④、共有設定の注意事項、注意事項、⑤の行番号
   sectionHeaders.forEach(row => {
-    if (row <= data.length) {
+    if (row <= data.length && row > 0) {
       const range = sheet.getRange(row, 1);
       range.setFontWeight('bold');
       range.setFontSize(12);
       range.setBackground('#E8F5E9');
     }
   });
+  
+  // Google DriveフォルダIDの行を強調
+  if (driveFolderId) {
+    const folderIdRow = data.length;
+    const folderIdRange = sheet.getRange(folderIdRow, 1);
+    folderIdRange.setFontWeight('bold');
+    folderIdRange.setFontColor('#1976D2');
+    folderIdRange.setBackground('#E3F2FD');
+  }
 }
 
 /**
