@@ -1,7 +1,7 @@
 /**
  * 作成者：浦野一輝
  * 作成日：2025-11-11 02:32:19
- * 最終更新：2025-11-11 04:02:23
+ * 最終更新：2025-11-11 04:06:04
  * 説明：勤怠管理アプリ - Google Apps Script（スプレッドシートとの連携処理）
  * 
  * 【修正履歴（詳細版）】
@@ -30,6 +30,7 @@
  * - 2025-11-11 03:53:09 [浦野一輝]：UI改善 - 編集フォームの入力フィールドにtitle属性を追加して、HTML5バリデーションエラーメッセージを「HH:mm形式で入力してください」にカスタマイズ
  * - 2025-11-11 03:58:22 [浦野一輝]：UI改善 - 編集フォームの時刻入力フィールドを選択式（時間・分のドロップダウン）に変更（initializeTimeSelects関数、parseTime関数、formatTime関数を追加、バリデーションと送信処理を更新）
  * - 2025-11-11 04:02:23 [浦野一輝]：UI改善 - 編集フォームの日付入力フィールドを選択式（年・月・日のドロップダウン）に変更、時刻選択のフォントサイズを大きく（28px）に変更（initializeDateSelects関数、parseDate関数、formatDate関数、updateDaySelect関数を追加、年月変更時に日の選択を自動更新するイベントリスナーを追加）
+ * - 2025-11-11 04:06:04 [浦野一輝]：UI改善 - エラーメッセージの表示を改善（フォントサイズ24px、太字、背景色とボーダーを追加）、開始時刻と終了時刻の関係エラーを終了時刻のエラーとして大きく表示（「終了時刻は開始時刻より遅い時間を入力してください」）
  * 
  * 【push時の変更履歴（大きな変更のみ）】
  * - 2025-11-11 [浦野一輝]：フェーズ0実装（配布用スプレッドシートセットアップ）
@@ -1819,8 +1820,13 @@ function doGet(e) {
                 }
                 .error-message {
                     color: #F44336;
-                    font-size: 20px;
-                    margin-top: 8px;
+                    font-size: 24px;
+                    font-weight: bold;
+                    margin-top: 12px;
+                    padding: 12px;
+                    background-color: #FFEBEE;
+                    border-left: 4px solid #F44336;
+                    border-radius: 4px;
                 }
                 .no-records {
                     text-align: center;
@@ -2945,7 +2951,13 @@ function doGet(e) {
                                 loadAllRecords();
                                 loadMonthlyWorkHours();
                             } else {
-                                showMessage(result.message, 'error');
+                                // 開始時刻と終了時刻の関係に関するエラーの場合、終了時刻のエラーとして表示
+                                if (result.message && (result.message.indexOf('開始時刻が終了時刻より遅い') !== -1 || result.message.indexOf('開始時刻は終了時刻より早い') !== -1)) {
+                                    document.getElementById('editEndTimeError').textContent = '終了時刻は開始時刻より遅い時間を入力してください';
+                                    showMessage('終了時刻は開始時刻より遅い時間を入力してください', 'error');
+                                } else {
+                                    showMessage(result.message, 'error');
+                                }
                             }
                         })
                         .withFailureHandler(function(error) {
