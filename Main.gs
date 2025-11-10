@@ -1,7 +1,7 @@
 /**
  * 作成者：浦野一輝
  * 作成日：2025-11-11 02:32:19
- * 最終更新：2025-11-11 04:25:15
+ * 最終更新：2025-11-11 04:36:09
  * 説明：勤怠管理アプリ - Main（機能別分割）
  * 
  * 【修正履歴（詳細版）】
@@ -35,6 +35,7 @@
  * - 2025-11-11 04:10:57 [浦野一輝]：CSV出力シート選択UI改善 - 自由記述からプルダウン選択に変更、新しい順（降順）で表示
  * - 2025-11-11 04:23:30 [浦野一輝]：onOpen関数にアプリURL自動反映機能を追加、メニューに「🔗 アプリURLを設定シートに反映」を追加
  * - 2025-11-11 04:25:15 [浦野一輝]：メニューに「🚀 Apps Scriptエディタを開く（デプロイ用）」を追加、onOpenでの自動取得エラーを無視するように変更
+ * - 2025-11-11 04:36:09 [浦野一輝]：メニューから「スプレッドシート接続テスト」と「Apps Scriptエディタを開く（デプロイ用）」「アプリURLを設定シートに反映」を削除、onOpenでの自動URL反映を削除
  * 
  * 【push時の変更履歴（大きな変更のみ）】
  * - 2025-11-11 [浦野一輝]：フェーズ0実装（配布用スプレッドシートセットアップ）
@@ -1732,21 +1733,8 @@ function onOpen() {
   ui.createMenu('⚙️ 勤怠管理')
     .addItem('🔧 初期設定をする', 'setupInitialConfiguration')
     .addSeparator()
-    .addItem('📊 スプレッドシート接続テスト', 'testConnection')
-    .addSeparator()
     .addItem('📥 CSV最新版を出力', 'exportCSVToSheet')
-    .addSeparator()
-    .addItem('🔗 アプリURLを設定シートに反映', 'updateWebAppUrlInSettingSheet')
-    .addSeparator()
-    .addItem('🚀 Apps Scriptエディタを開く（デプロイ用）', 'openScriptEditor')
     .addToUi();
-  
-  // デプロイ情報を確認して、設定シートにURLを自動反映（エラーは無視）
-  try {
-    updateWebAppUrlInSettingSheet();
-  } catch (error) {
-    Logger.log('onOpen: updateWebAppUrlInSettingSheet エラー（無視）: ' + error.toString());
-  }
 }
 
 /**
