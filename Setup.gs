@@ -340,8 +340,9 @@ function setupSettingSheet(sheet, driveFolderId) {
   sheet.setColumnWidth(1, 800);
   
   // セクション見出しのスタイル（URL情報行を考慮して+2）
-  // ①初期設定(7行目)、②デプロイ(16行目)、③動作確認(約90行目)、④共有設定(約110行目)、⑤Google Drive(約130行目)
-  const sectionHeaders = [7, 16, 90, 110, 130, data.length + 2 - (driveFolderId ? 3 : 9)]; // ①、②、③、④、⑤の行番号（概算）
+  // data配列の行番号: ①=4行目、②=17行目、③=87行目、④=97行目、⑤=130行目
+  // 実際のシート行番号: 3 + data配列の行番号
+  const sectionHeaders = [7, 20, 90, 100, 133]; // ①、②、③、④、⑤の行番号
   sectionHeaders.forEach(row => {
     if (row <= data.length + 2 && row > 0) {
       const range = sheet.getRange(row, 1);
